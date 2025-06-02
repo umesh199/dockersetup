@@ -1,0 +1,49 @@
+import docker
+import os
+
+# Initialize Docker client
+client = docker.from_env()
+
+# Dockerfile content
+dockerfile = '''
+FROM redhat/ubi8
+
+# Install basic networking tools and OpenSSH server
+RUN dnf -y update && \
+    dnf install -y iproute net-tools iputils openssh-server passwd && \
+    dnf clean all
+
+# Configure SSH
+RUN mkdir /var/run/sshd && \
+    echo "root:redhat" | chpasswd && \
+    ssh-keygen -A && \
+    sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Set environment variable to allow SSH
+ENV NOTVISIBLE "in users profile"
+RUN echo "export VISIBLE=now" >> /etc/profile
+
+# Expose SSH port
+EXPOSE 22
+
+# Start SSHD
+CMD ["/usr/sbin/sshd", "-D"]
+'''
+
+# Save Dockerfile locally
+dockerfile_path = './Dockerfile'
+with open(dockerfile_path, 'w') as f:
+    f.write(dockerfile)
+
+# Build the image
+print("Building the image...")
+image, build_logs = client.images.build(path=".", tag="custom-ubi8:ssh", rm=True)
+for chunk in build_logs:
+    if 'stream' in chunk:
+        print(chunk['stream'].strip())
+
+print("Image 'custom-ubi8:ssh' built successfully.")
+
+# Cleanup Dockerfile
+os.remove(dockerfile_path)
