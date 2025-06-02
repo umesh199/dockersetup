@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -e
+
+# === Configuration ===
+MACVLAN_NET_NAME="macvlan_net_154"
+CONTAINER_IP="172.16.154.228"
+CONTAINER_NAME="docker-test2"
+HOSTNAME="docker-test2"
+IMAGE_NAME="redhat/ubi8"
+DNS_SERVER="172.16.20.50"
+
+# === Step 1: Pull image if not already present ===
+if ! docker image inspect $IMAGE_NAME &>/dev/null; then
+  echo "==> Pulling Docker image: $IMAGE_NAME ..."
+  docker pull $IMAGE_NAME
+else
+  echo "✅ Image $IMAGE_NAME already exists"
+fi
+
+# === Step 2: Run container using existing macvlan network ===
+echo "==> Starting container $CONTAINER_NAME with IP $CONTAINER_IP ..."
+docker run -dit \
+  --name $CONTAINER_NAME \
+  --hostname $HOSTNAME \
+  --net $MACVLAN_NET_NAME \
+  --ip $CONTAINER_IP \
+  --dns $DNS_SERVER \
+  $IMAGE_NAME /bin/bash
+
+echo "✅ Container '$CONTAINER_NAME' started with:"
+echo "   ➤ Hostname: $HOSTNAME"
+echo "   ➤ IP: $CONTAINER_IP"
+echo "   ➤ DNS: $DNS_SERVER"
