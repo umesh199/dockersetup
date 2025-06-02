@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# Variables
+CONTAINER_NAME="docker-test2"
+IMAGE_NAME="ubi8-custom"
+MACVLAN_NET="macvlan_net"
+HOST_INTERFACE="ens192"
+CONTAINER_IP="172.16.154.228"
+GATEWAY="172.16.154.1"
+SUBNET="172.16.154.0/24"
+DNS_SERVER="172.16.20.50"
+HOSTNAME="docker-test2"
+
+# Step 1: Create a Dockerfile to install tools
+cat > Dockerfile <<EOF
+FROM registry.access.redhat.com/ubi8/ubi
+
+RUN microdnf install -y iproute iputils openssh-server passwd sudo && \
+    useradd dockeruser && echo "dockeruser:password" | chpasswd && \
+    mkdir /var/run/sshd && \
+    echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+
+CMD ["/usr/sbin/sshd", "-D"]
+EOF
+
+# Step 2: Build the custom image
+docker build -t $IMAGE_NAME .
+
+# Step 3: Create macvlan network (if not already exists)
+docker network inspect $MACVLAN_NET >/dev/null 2>&1 || \
+docker network create -d macvlan \
+  --subnet=$SUBNET \
+  --gateway=$GATEWAY \
+  --ip-range=$SUBNET \
+  -o parent=$HOST_INTERFACE \
+  $MACVLAN_NET
+
+# Step 4: Run the container with static IP, hostname, and DNS
+docker run -dit --name $CONTAINER_NAME \
+  --hostname $HOSTNAME \
+  --network $MACVLAN_NET \
+  --ip $CONTAINER_IP \
+  --dns $DNS_SERVER \
+  --privileged \
+  $IMAGE_NAME
