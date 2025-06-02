@@ -1,0 +1,60 @@
+#!/bin/bash
+
+set -e
+
+# CONFIGURATION
+PARENT_IF="enp5s0f0"
+VLAN_ID="932"
+VLAN_IF="${PARENT_IF}.${VLAN_ID}"
+VLAN_IP="172.16.133.176/22"
+SUBNET="172.16.132.0/22"
+GATEWAY="172.16.132.1"
+CONTAINER_IP="172.16.132.3"
+CONTAINER_NAME="hqxsr-dockertest1"
+CONTAINER_HOSTNAME="hqxsr-dockertest1"
+IMAGE_NAME="redhat/ubi8"
+ROOT_PASS="Redhat123"
+
+echo "==> Installing required tools..."
+dnf install -y yum-utils device-mapper-persistent-data lvm2 iproute
+
+echo "==> Adding Docker CE repository..."
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+echo "==> Installing Docker..."
+dnf install -y docker-ce docker-ce-cli containerd.io
+
+echo "==> Enabling Docker service..."
+systemctl enable --now docker
+
+echo "==> Creating VLAN interface $VLAN_IF..."
+nmcli connection add type vlan con-name $VLAN_IF dev $PARENT_IF id $VLAN_ID ip4 $VLAN_IP
+nmcli connection up $VLAN_IF
+
+echo "==> Creating macvlan Docker network..."
+docker network create -d macvlan \
+  --subnet=$SUBNET \
+  --gateway=$GATEWAY \
+  -o parent=$VLAN_IF vlan932-net || echo "Network may already exist."
+
+echo "==> Pulling UBI image..."
+docker pull $IMAGE_NAME
+
+echo "==> Creating container $CONTAINER_NAME..."
+docker run -dit \
+  --name $CONTAINER_NAME \
+  --net vlan932-net \
+  --ip $CONTAINER_IP \
+  --hostname $CONTAINER_HOSTNAME \
+  $IMAGE_NAME /bin/bash
+
+echo "==> Installing SSH and tools inside the container..."
+docker exec -u 0 $CONTAINER_NAME microdnf install -y openssh-server passwd iproute iputils
+docker exec -u 0 $CONTAINER_NAME mkdir -p /var/run/sshd
+docker exec -u 0 $CONTAINER_NAME bash -c "echo root:$ROOT_PASS | chpasswd"
+docker exec -u 0 $CONTAINER_NAME sed -i 's/#PermitRootLogin yes/PermitRootLogin yes/' /etc/ssh/sshd_config
+docker exec -u 0 $CONTAINER_NAME sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
+docker exec -u 0 $CONTAINER_NAME /usr/sbin/sshd
+
+echo "==> ✅ Container $CONTAINER_NAME is running at IP $CONTAINER_IP"
+echo "==> 🔐 You can SSH using: ssh root@$CONTAINER_IP (Password: $ROOT_PASS)"
