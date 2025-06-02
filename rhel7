@@ -1,0 +1,33 @@
+#!/bin/bash
+
+set -e
+
+echo "==> [1/6] Removing old Docker packages..."
+yum remove -y docker \
+              docker-client \
+              docker-client-latest \
+              docker-common \
+              docker-latest \
+              docker-latest-logrotate \
+              docker-logrotate \
+              docker-engine || true
+
+echo "==> [2/6] Installing required dependencies..."
+yum install -y yum-utils device-mapper-persistent-data lvm2
+
+echo "==> [3/6] Adding Docker CE repo..."
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+echo "==> [4/6] Installing Docker CE (version 20.10.24) with containerd.io 1.6.6..."
+yum install -y docker-ce-20.10.24 docker-ce-cli-20.10.24 containerd.io-1.6.6
+
+echo "==> [5/6] Enabling and starting Docker service..."
+systemctl enable --now docker
+
+echo "==> [6/6] Verifying Docker installation..."
+docker --version && echo "✅ Docker installed successfully."
+
+# Optional: Add current user to docker group if needed
+# usermod -aG docker <username>
+
+echo "🚀 Docker is ready to use. You can run: docker run hello-world"
