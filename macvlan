@@ -1,0 +1,45 @@
+#!/bin/bash
+
+set -e
+
+# === Configuration ===
+MACVLAN_NET_NAME="macvlan_net_154"
+PARENT_INTERFACE="ens192"
+SUBNET="172.16.154.0/24"
+GATEWAY="172.16.154.1"
+CONTAINER_IP="172.16.154.227"
+CONTAINER_NAME="test-docker"
+HOSTNAME="test-docker"
+IMAGE_NAME="redhat/ubi8"
+SSH_PASSWORD="redhat"
+
+echo "==> Step 1: Pulling image: $IMAGE_NAME ..."
+docker pull $IMAGE_NAME
+
+echo "==> Step 2: Creating macvlan network: $MACVLAN_NET_NAME ..."
+docker network create -d macvlan \
+  --subnet=$SUBNET \
+  --gateway=$GATEWAY \
+  -o parent=$PARENT_INTERFACE \
+  $MACVLAN_NET_NAME || echo "⚠️  Network $MACVLAN_NET_NAME may already exist."
+
+echo "==> Step 3: Creating and starting container $CONTAINER_NAME ..."
+docker run -dit \
+  --name $CONTAINER_NAME \
+  --hostname $HOSTNAME \
+  --net $MACVLAN_NET_NAME \
+  --ip $CONTAINER_IP \
+  --privileged \
+  $IMAGE_NAME /bin/bash
+
+echo "==> Step 4: Installing openssh-server in container ..."
+docker exec -u root $CONTAINER_NAME bash -c "
+  dnf install -y openssh-server passwd iproute && \
+  ssh-keygen -A && \
+  echo 'root:$SSH_PASSWORD' | chpasswd && \
+  mkdir -p /run/sshd && \
+  /usr/sbin/sshd
+"
+
+echo "✅ Container '$CONTAINER_NAME' is running with IP $CONTAINER_IP"
+echo "➡️  You can SSH into it using: ssh root@$CONTAINER_IP (Password: $SSH_PASSWORD)"
